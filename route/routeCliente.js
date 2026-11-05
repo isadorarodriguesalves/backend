@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('./database');
+const Cliente = require('../models').clientes;
 
 const clienteFields = {
     nome: 'nome',
@@ -14,10 +14,10 @@ function validId(value) {
 }
 
 router.get('/', async (req, res) => {
-    const clientes = await query(
-        `SELECT id_cliente, nome, email, contato, ativo, criado_em, atualizado_em
-         FROM clientes`
-    );
+    const clientes = await Cliente.findAll({
+        attributes: ['id_cliente', 'nome', 'email', 'contato', 'ativo', 'criado_em', 'atualizado_em'],
+        raw: true
+    });
     res.status(200).json({ clientes });
 });
 
@@ -26,15 +26,14 @@ router.get('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const clientes = await query(
-        `SELECT id_cliente, nome, email, contato, ativo, criado_em, atualizado_em
-         FROM clientes WHERE id_cliente = ?`,
-        [req.params.id]
-    );
-    if (clientes.length === 0) {
+    const cliente = await Cliente.findByPk(req.params.id, {
+        attributes: ['id_cliente', 'nome', 'email', 'contato', 'ativo', 'criado_em', 'atualizado_em'],
+        raw: true
+    });
+    if (!cliente) {
         return res.status(404).json({ mensagem: 'Cliente não encontrado.' });
     }
-    res.status(200).json({ cliente: clientes[0] });
+    res.status(200).json({ cliente });
 });
 
 router.post('/', async (req, res) => {
@@ -43,13 +42,10 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ mensagem: 'Nome e email são obrigatórios.' });
     }
 
-    const resultado = await query(
-        'INSERT INTO clientes (nome, email, contato, ativo) VALUES (?, ?, ?, ?)',
-        [nome.trim(), email.trim(), contato, ativo]
-    );
+    const cliente = await Cliente.create({ nome: nome.trim(), email: email.trim(), contato, ativo });
     res.status(201).json({
         mensagem: 'Cliente criado com sucesso!',
-        id_cliente: resultado.insertId
+        id_cliente: cliente.id_cliente
     });
 });
 
@@ -71,12 +67,11 @@ router.patch('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'Nome e email não podem ficar vazios.' });
     }
 
-    const assignments = fields.map((field) => `${clienteFields[field]} = ?`).join(', ');
-    const values = fields.map((field) =>
+    const values = Object.fromEntries(fields.map((field) => [
+        clienteFields[field],
         typeof body[field] === 'string' ? body[field].trim() : body[field]
-    );
-    values.push(req.params.id);
-    await query(`UPDATE clientes SET ${assignments} WHERE id_cliente = ?`, values);
+    ]));
+    await Cliente.update(values, { where: { id_cliente: req.params.id } });
     res.status(200).json({ mensagem: 'Cliente atualizado com sucesso!' });
 });
 
@@ -85,8 +80,8 @@ router.delete('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const resultado = await query('DELETE FROM clientes WHERE id_cliente = ?', [req.params.id]);
-    if (resultado.affectedRows === 0) {
+    const deletedCount = await Cliente.destroy({ where: { id_cliente: req.params.id } });
+    if (deletedCount === 0) {
         return res.status(404).json({ mensagem: 'Cliente não encontrado.' });
     }
     res.status(200).json({ mensagem: 'Cliente removido com sucesso!' });

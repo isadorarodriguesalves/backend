@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('./database');
+const Funcionario = require('../models').funcionarios;
 
 const funcionarioFields = {
     nome: 'nome',
@@ -17,7 +17,7 @@ function validId(value) {
 }
 
 router.get('/', async (req, res) => {
-    const funcionarios = await query('SELECT * FROM funcionarios');
+    const funcionarios = await Funcionario.findAll({ raw: true });
     res.status(200).json({ funcionarios });
 });
 
@@ -26,14 +26,11 @@ router.get('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const funcionarios = await query(
-        'SELECT * FROM funcionarios WHERE id_funcionario = ?',
-        [req.params.id]
-    );
-    if (funcionarios.length === 0) {
+    const funcionario = await Funcionario.findByPk(req.params.id, { raw: true });
+    if (!funcionario) {
         return res.status(404).json({ mensagem: 'Funcionário não encontrado.' });
     }
-    res.status(200).json({ funcionarios: funcionarios[0] });
+    res.status(200).json({ funcionarios: funcionario });
 });
 
 router.post('/', async (req, res) => {
@@ -44,15 +41,18 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ mensagem: 'Nome, cargo e salário válido são obrigatórios.' });
     }
 
-    const resultado = await query(
-        `INSERT INTO funcionarios
-         (nome, cargo, salario, telefone, email, data_admissao, ativo)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [nome.trim(), cargo.trim(), salario, telefone, email, data_admissao, ativo]
-    );
+    const funcionario = await Funcionario.create({
+        nome: nome.trim(),
+        cargo: cargo.trim(),
+        salario,
+        telefone,
+        email,
+        data_admissao,
+        ativo
+    });
     res.status(201).json({
         mensagem: 'Funcionário criado com sucesso!',
-        id_funcionario: resultado.insertId
+        id_funcionario: funcionario.id_funcionario
     });
 });
 
@@ -78,12 +78,11 @@ router.patch('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'Salário inválido.' });
     }
 
-    const assignments = fields.map((field) => `${funcionarioFields[field]} = ?`).join(', ');
-    const values = fields.map((field) =>
+    const values = Object.fromEntries(fields.map((field) => [
+        funcionarioFields[field],
         typeof body[field] === 'string' ? body[field].trim() : body[field]
-    );
-    values.push(req.params.id);
-    await query(`UPDATE funcionarios SET ${assignments} WHERE id_funcionario = ?`, values);
+    ]));
+    await Funcionario.update(values, { where: { id_funcionario: req.params.id } });
     res.status(200).json({ mensagem: 'Funcionário atualizado com sucesso!' });
 });
 
@@ -92,11 +91,8 @@ router.delete('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const resultado = await query(
-        'DELETE FROM funcionarios WHERE id_funcionario = ?',
-        [req.params.id]
-    );
-    if (resultado.affectedRows === 0) {
+    const deletedCount = await Funcionario.destroy({ where: { id_funcionario: req.params.id } });
+    if (deletedCount === 0) {
         return res.status(404).json({ mensagem: 'Funcionário não encontrado.' });
     }
     res.status(200).json({ mensagem: 'Funcionário removido com sucesso!' });

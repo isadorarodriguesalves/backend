@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { query } = require('./database');
+const Usuario = require('../models').usuarios;
 const bcrypt = require('bcryptjs');
 
 const userFields = {
@@ -34,16 +34,15 @@ router.post('/login', async (req, res) => {
         return res.status(400).json({ mensagem: 'Email e senha são obrigatórios.' });
     }
 
-    const usuarios = await query(
-        `SELECT id_usu, nome, email, senha, contato, genero, ativo
-         FROM usuarios WHERE email = ?`,
-        [email.trim()]
-    );
-    if (usuarios.length === 0 || Number(usuarios[0].ativo) !== 1) {
+    const usuario = await Usuario.findOne({
+        attributes: ['id_usu', 'nome', 'email', 'senha', 'contato', 'genero', 'ativo'],
+        where: { email: email.trim() },
+        raw: true
+    });
+    if (!usuario || Number(usuario.ativo) !== 1) {
         return res.status(401).json({ mensagem: 'Email ou senha inválidos.' });
     }
 
-    const usuario = usuarios[0];
     const bcryptHash = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(usuario.senha);
     const senhaValida = bcryptHash
         ? await bcrypt.compare(senha, usuario.senha)
@@ -54,11 +53,10 @@ router.post('/login', async (req, res) => {
 
     if (!bcryptHash) {
         const senhaHash = await bcrypt.hash(senha, 10);
-        await query('UPDATE usuarios SET senha = ? WHERE id_usu = ? AND senha = ?', [
-            senhaHash,
-            usuario.id_usu,
-            usuario.senha
-        ]);
+        await Usuario.update(
+            { senha: senhaHash },
+            { where: { id_usu: usuario.id_usu, senha: usuario.senha } }
+        );
     }
 
     delete usuario.senha;
@@ -69,10 +67,10 @@ router.post('/login', async (req, res) => {
 });
 
 router.get('/', async (req, res) => {
-    const usuarios = await query(
-        `SELECT id_usu, nome, email, contato, genero, ativo, criado_em, atualizado_em
-         FROM usuarios`
-    );
+    const usuarios = await Usuario.findAll({
+        attributes: ['id_usu', 'nome', 'email', 'contato', 'genero', 'ativo', 'criado_em', 'atualizado_em'],
+        raw: true
+    });
     res.status(200).json({ usuarios });
 });
 
@@ -81,15 +79,14 @@ router.get('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const usuarios = await query(
-        `SELECT id_usu, nome, email, contato, genero, ativo, criado_em, atualizado_em
-         FROM usuarios WHERE id_usu = ?`,
-        [req.params.id]
-    );
-    if (usuarios.length === 0) {
+    const usuario = await Usuario.findByPk(req.params.id, {
+        attributes: ['id_usu', 'nome', 'email', 'contato', 'genero', 'ativo', 'criado_em', 'atualizado_em'],
+        raw: true
+    });
+    if (!usuario) {
         return res.status(404).json({ mensagem: 'Usuário não encontrado.' });
     }
-    res.status(200).json({ usuario: usuarios[0] });
+    res.status(200).json({ usuario });
 });
 
 router.post('/', async (req, res) => {
@@ -105,14 +102,17 @@ router.post('/', async (req, res) => {
     }
 
     const senhaHash = await bcrypt.hash(senha, 10);
-    const resultado = await query(
-        `INSERT INTO usuarios (nome, email, senha, contato, genero, ativo)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [nome.trim(), email.trim(), senhaHash, contato, genero, ativo]
-    );
+    const usuario = await Usuario.create({
+        nome: nome.trim(),
+        email: email.trim(),
+        senha: senhaHash,
+        contato,
+        genero,
+        ativo
+    });
     res.status(201).json({
         mensagem: 'Usuário criado com sucesso!',
-        id_usu: resultado.insertId
+        id_usu: usuario.id_usu
     });
 });
 
@@ -132,17 +132,13 @@ router.patch('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'Um ou mais campos são inválidos.' });
     }
 
-    const assignments = fields.map((field) => `${field} = ?`).join(', ');
-    const values = await Promise.all(fields.map(async (field) => {
+    const values = Object.fromEntries(await Promise.all(fields.map(async (field) => {
         if (field === 'senha') {
-            return bcrypt.hash(body[field], 10);
+            return [field, await bcrypt.hash(body[field], 10)];
         }
-        return typeof body[field] === 'string' ? body[field].trim() : body[field];
-    }));
-    await query(
-        `UPDATE usuarios SET ${assignments} WHERE id_usu = ?`,
-        [...values, req.params.id]
-    );
+        return [field, typeof body[field] === 'string' ? body[field].trim() : body[field]];
+    })));
+    await Usuario.update(values, { where: { id_usu: req.params.id } });
     res.status(200).json({ mensagem: 'Usuário atualizado com sucesso!' });
 });
 
@@ -151,8 +147,8 @@ router.delete('/:id', async (req, res) => {
         return res.status(400).json({ mensagem: 'ID inválido.' });
     }
 
-    const resultado = await query('DELETE FROM usuarios WHERE id_usu = ?', [req.params.id]);
-    if (resultado.affectedRows === 0) {
+    const deletedCount = await Usuario.destroy({ where: { id_usu: req.params.id } });
+    if (deletedCount === 0) {
         return res.status(404).json({ mensagem: 'Usuário não encontrado.' });
     }
     res.status(200).json({ mensagem: 'Usuário removido com sucesso!' });

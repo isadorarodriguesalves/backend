@@ -2,10 +2,11 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon server.js"
+    "start": "node server.js",
+    "start:dev": "nodemon server.js"
   },
   "keywords": [],
   "author": "",
@@ -17,10 +18,11 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mysql": "^2.18.1"
+    "morgan": "^1.12.1",
+    "mysql2": "^3.24.6",
+    "sequelize": "^6.37.8"
   },
   "devDependencies": {
-    "morgan": "^1.12.0",
     "nodemon": "^3.1.14"
   }
 }

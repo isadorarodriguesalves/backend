@@ -1,5 +1,5 @@
 const express = require('express');
-const { query } = require('./database');
+const models = require('../models');
 
 function validId(value) {
     return /^\d+$/.test(value) && Number(value) > 0;
@@ -30,6 +30,7 @@ function validValue(type, value) {
 
 function createCrudRouter({ table, idField, plural, singular, fields, required = [] }) {
     const router = express.Router();
+    const model = models[table];
     const fieldNames = Object.keys(fields);
 
     function validateFields(body, names) {
@@ -40,7 +41,7 @@ function createCrudRouter({ table, idField, plural, singular, fields, required =
     }
 
     router.get('/', async (req, res) => {
-        const records = await query(`SELECT * FROM ${table}`);
+        const records = await model.findAll({ raw: true });
         res.status(200).json({ [plural]: records });
     });
 
@@ -49,14 +50,11 @@ function createCrudRouter({ table, idField, plural, singular, fields, required =
             return res.status(400).json({ mensagem: 'ID inválido.' });
         }
 
-        const records = await query(
-            `SELECT * FROM ${table} WHERE ${idField} = ?`,
-            [req.params.id]
-        );
-        if (records.length === 0) {
+        const record = await model.findByPk(req.params.id, { raw: true });
+        if (!record) {
             return res.status(404).json({ mensagem: `${singular} não encontrado(a).` });
         }
-        res.status(200).json({ [singular]: records[0] });
+        res.status(200).json({ [singular]: record });
     });
 
     router.post('/', async (req, res) => {
@@ -71,16 +69,12 @@ function createCrudRouter({ table, idField, plural, singular, fields, required =
             return res.status(400).json({ mensagem: 'Um ou mais campos são inválidos.' });
         }
 
-        const statement = names.length
-            ? `INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`
-            : `INSERT INTO ${table} () VALUES ()`;
-        const result = await query(
-            statement,
-            names.map((name) => body[name])
+        const record = await model.create(
+            Object.fromEntries(names.map((name) => [name, body[name]]))
         );
         res.status(201).json({
             mensagem: `${singular} criado(a) com sucesso!`,
-            [idField]: result.insertId
+            [idField]: record.get(idField)
         });
     });
 
@@ -100,10 +94,9 @@ function createCrudRouter({ table, idField, plural, singular, fields, required =
             return res.status(400).json({ mensagem: 'Um ou mais campos são inválidos.' });
         }
 
-        const assignments = names.map((name) => `${name} = ?`).join(', ');
-        await query(
-            `UPDATE ${table} SET ${assignments} WHERE ${idField} = ?`,
-            [...names.map((name) => body[name]), req.params.id]
+        await model.update(
+            Object.fromEntries(names.map((name) => [name, body[name]])),
+            { where: { [idField]: req.params.id } }
         );
         res.status(200).json({ mensagem: `${singular} atualizado(a) com sucesso!` });
     });
@@ -113,8 +106,8 @@ function createCrudRouter({ table, idField, plural, singular, fields, required =
             return res.status(400).json({ mensagem: 'ID inválido.' });
         }
 
-        const result = await query(`DELETE FROM ${table} WHERE ${idField} = ?`, [req.params.id]);
-        if (result.affectedRows === 0) {
+        const deletedCount = await model.destroy({ where: { [idField]: req.params.id } });
+        if (deletedCount === 0) {
             return res.status(404).json({ mensagem: `${singular} não encontrado(a).` });
         }
         res.status(200).json({ mensagem: `${singular} removido(a) com sucesso!` });
