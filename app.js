@@ -18,9 +18,20 @@ const routePedido = require('./route/routePedido');
 const routePedidoItem = require('./route/routePedidoItem');
 const routeSaida = require('./route/routeSaida');
 
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowAnyOrigin = process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0;
+
 // 2. Controle de CORS
 app.use(cors({
-    origin: '*',
+    origin: (origin, callback) => {
+        if (!origin || allowAnyOrigin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(null, false);
+    },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
         'Origin',
