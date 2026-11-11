@@ -82,6 +82,11 @@ Em execução local com a porta padrão, a URL base é
 
 Em produção no Render, a URL base é `https://backend-6apy.onrender.com`.
 
+## Página inicial
+
+Uma requisição `GET /` exibe uma página HTML com uma breve apresentação da API
+e links para seus recursos. As rotas dos recursos continuam retornando JSON.
+
 ## Formato das requisições e respostas
 
 As rotas que recebem dados esperam JSON com o cabeçalho
