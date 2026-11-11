@@ -72,6 +72,7 @@ local, que não deve ser compartilhado:
 | `PORT` | Porta HTTP da API; usa `5000` se não estiver definida. |
 | `DB_SSL` | Define `true` para exigir TLS com validação do certificado MySQL; padrão `false`. |
 | `CORS_ORIGINS` | Lista de origens web permitidas, separadas por vírgula. Em produção, origens não listadas não recebem permissão CORS. |
+| `JWT_SECRET` | Segredo aleatório de pelo menos 32 bytes usado para assinar tokens de acesso. Obrigatório para iniciar a API. |
 
 Este documento não inclui valores de configuração ou credenciais.
 
@@ -85,7 +86,8 @@ Em produção no Render, a URL base é `https://backend-6apy.onrender.com`.
 ## Página inicial
 
 Uma requisição `GET /` exibe uma página HTML com uma breve apresentação da API
-e links para seus recursos. As rotas dos recursos continuam retornando JSON.
+e lista seus recursos. As rotas dos recursos retornam JSON e exigem um token
+Bearer obtido pelo endpoint de login.
 
 ## Formato das requisições e respostas
 
@@ -170,11 +172,13 @@ Content-Type: application/json
 ```
 
 Em caso de sucesso, a resposta é `200 OK`, inclui os dados do usuário e não
-inclui a senha:
+inclui a senha. Também retorna um token Bearer válido por uma hora:
 
 ```json
 {
   "mensagem": "Login realizado com sucesso!",
+  "token": "<token de acesso>",
+  "expiresIn": 3600,
   "usuario": {
     "id_usu": 1,
     "nome": "Nome do usuário",
@@ -198,6 +202,7 @@ Cadastre um usuário enviando `POST /usuario` com JSON. `nome`, `email` e
 ```http
 POST /usuario
 Content-Type: application/json
+Authorization: Bearer <token>
 ```
 
 ```json
@@ -215,10 +220,26 @@ teste; não coloque senhas reais em documentação, histórico ou repositório.
 
 ## Autenticação e acesso às rotas
 
-O endpoint de login valida as credenciais, mas **não gera token nem sessão**.
-Atualmente, nenhuma rota é protegida por autenticação; não há requisito de
-token ou cabeçalho `Authorization` para acessar os recursos. Portanto, o login
-não concede uma autorização que restrinja o acesso às demais rotas.
+Somente `GET /` e `POST /usuario/login` são públicos. Todas as rotas de dados,
+incluindo as operações CRUD de `/usuario`, exigem o cabeçalho
+`Authorization: Bearer <token>` retornado pelo login. Tokens inválidos,
+expirados ou ausentes recebem `401 Unauthorized`. As contas autenticadas têm as
+mesmas permissões; a API ainda não diferencia papéis ou níveis de acesso.
+
+Exemplo de chamada autenticada:
+
+```http
+GET /produto
+Authorization: Bearer <token>
+```
+
+Configure `JWT_SECRET` no ambiente da API com um valor aleatório de pelo menos
+32 bytes. Gere um valor com
+`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+Não inclua o segredo em código, documentação versionada ou controle de versão.
+No Render, configure `JWT_SECRET` nas variáveis de ambiente do serviço antes
+do próximo deploy; sem essa variável, a API não inicia. Os tokens expiram após
+uma hora; faça login novamente para obter outro.
 
 As senhas cadastradas e atualizadas são armazenadas com bcrypt. Para
 compatibilidade, senhas antigas armazenadas em texto puro podem ser validadas e
@@ -234,8 +255,8 @@ listadas não recebem cabeçalhos CORS. Os métodos permitidos incluem `GET`,
 `POST`, `PUT`, `PATCH`, `DELETE` e `OPTIONS`.
 
 CORS limita quais páginas web podem ler respostas no navegador; não é
-autenticação e não impede chamadas diretas à API. Atualmente as rotas de dados
-não exigem login. Use um usuário MySQL dedicado, com acesso somente às tabelas
+autenticação e não impede chamadas diretas à API. A autenticação Bearer é
+validada pela API. Use um usuário MySQL dedicado, com acesso somente às tabelas
 necessárias e privilégios de leitura e gravação (SELECT, INSERT, UPDATE e
 DELETE); não conceda privilégios administrativos ou de alteração de esquema
 em produção, pois a aplicação não executa migrações.

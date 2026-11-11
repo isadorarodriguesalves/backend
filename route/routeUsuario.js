@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const Usuario = require('../models').usuarios;
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const authenticate = require('../middleware/authenticate');
 
 const userFields = {
     nome: 'string',
@@ -62,9 +64,23 @@ router.post('/login', async (req, res) => {
     delete usuario.senha;
     res.status(200).json({
         mensagem: 'Login realizado com sucesso!',
-        usuario
+        usuario,
+        token: jwt.sign(
+            { email: usuario.email },
+            process.env.JWT_SECRET,
+            {
+                algorithm: 'HS256',
+                audience: 'loja-api',
+                expiresIn: '1h',
+                issuer: 'loja-api',
+                subject: String(usuario.id_usu)
+            }
+        ),
+        expiresIn: 3600
     });
 });
+
+router.use(authenticate);
 
 router.get('/', async (req, res) => {
     const usuarios = await Usuario.findAll({
